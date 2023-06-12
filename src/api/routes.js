@@ -8,6 +8,7 @@ const multer = require('multer');
 const upload = multer();
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const Category = require('../models/category.model');
 
 let refreshTokens = [];
 
@@ -23,7 +24,7 @@ router.post('/register', async (req, res) => {
   }
 
   const hash = await bcrypt.hash(password, 10);
-  const newUser = new User({ username, password: hash });
+  const newUser = new User({ username, password: hash, role: 100 });
 
   try {
     await newUser.save();
@@ -35,9 +36,31 @@ router.post('/register', async (req, res) => {
   }
 });
 
+router.get('/users', async (req, res) => {
+  try {
+    const users = await User.find({ role: { $ne: 1000 } }).exec();
+    res.json(users);
+  } catch (error) {
+    console.error(`Error al obtener los usuarios: ${error}`);
+    res.status(500).send('Error al obtener los usuarios');
+  }
+});
+
+router.delete('/deleteUser/:id', async (req, res) => {
+  const userId = req.params.id;
+  try {
+    await User.findByIdAndDelete(userId);
+    res.json({ message: 'User deleted successfully' });
+  } catch (error) {
+    console.error(`Error deleting user: ${error}`);
+    res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+});
+
 router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   const user = await User.findOne({ username });
+  const role = user.role;
 
   if (!user) {
     return res.status(401).json({ message: 'Incorrect username or password.' });
@@ -52,12 +75,9 @@ router.post('/login', async (req, res) => {
   const accessToken = jwt.sign({ userId: user._id }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '15m' });
   const refreshToken = jwt.sign({ userId: user._id }, process.env.REFRESH_TOKEN_SECRET);
   refreshTokens.push(refreshToken);
-  res.json({ message: 'Logged in successfully', token, accessToken, refreshToken });
-  console.log('refreshTokens', refreshTokens)
-  console.log('token', token)
-  console.log('accessToken', accessToken)
-  console.log(({ message: 'Logged in successfully', token, accessToken, refreshToken }))
+  res.json({ message: 'Logged in successfully', token, accessToken, refreshToken, role });
 });
+
 
 router.post('/refresh', (req, res) => {
   const refreshToken = req.body.token;
@@ -85,14 +105,16 @@ router.get('/inventory', async (req, res) => {
 });
 
 router.post('/createProduct', async (req, res) => {
-  console.log('req.body', req.body)
-  const { name, description, price, image } = req.body;
+  console.log('req.body', req.body);
+  const { name, description, price, image, code, category } = req.body; // Agregar "code" al destructuring
   try {
     const newProduct = new Inventory({
       name,
       description,
       price,
-      image
+      image,
+      code,
+      category
     });
 
     const savedProduct = await newProduct.save();
@@ -108,13 +130,18 @@ router.put('/updateProduct/:id', async (req, res) => {
   try {
     const productId = req.params.id;
     const productObjectId = new ObjectId(productId);
-    const { name, description, price, image } = req.body;
-    const inventory = await Inventory.findByIdAndUpdate({ _id: productObjectId }, {
-      name,
-      description,
-      price,
-      image
-    });
+    const { name, description, price, image, code, category } = req.body;
+    const inventory = await Inventory.findByIdAndUpdate(
+      { _id: productObjectId },
+      {
+        name,
+        description,
+        price,
+        image,
+        code,
+        category
+      }
+    );
     res.json(inventory);
   } catch (error) {
     console.error(`Error al actualizar el producto: ${error}`);
@@ -133,5 +160,51 @@ router.delete('/deleteProduct/:id', async (req, res) => {
     res.status(500).send('Error al eliminar el producto');
   }
 });
+
+router.post('/add-category', async (req, res) => {
+  const name = req.body.name;
+  const categoryExists = await Category.findOne({ name });
+
+  if (categoryExists) {
+    return res.status(409).json({ message: 'Category already exists.' });
+  }
+
+  const newCategory = new Category({ name });
+
+  try {
+    await newCategory.save();
+    res.status(201).json({ message: 'Category created successfully' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+});
+
+router.delete('/delete-category/:id', async (req, res) => {
+  const categoryId = req.params.id;
+  const categoryObjectId = new ObjectId(categoryId);
+
+  try {
+    await Inventory.updateMany({ category: categoryId }, { category: '' });
+    await Category.findByIdAndDelete({ _id: categoryObjectId });
+    res.json({ message: 'Categoría eliminada con éxito.' });
+  } catch (error) {
+    console.error(`Error al eliminar la categoría: ${error}`);
+    res.status(500).send('Error al eliminar la categoría');
+  }
+});
+
+router.get('/categories', async (req, res) => {
+  try {
+    const Categories = await Category.find();
+    res.json(Categories)
+  } catch (error) {
+    console.error(`Error al obtener las categorias: ${error}`);
+    res.status(500).send('Error al obtener las categorias');
+  }
+})
+
+
+
 
 module.exports = router;
