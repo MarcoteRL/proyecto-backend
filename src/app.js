@@ -7,9 +7,6 @@ const fileUpload = require('express-fileupload');
 app.use(fileUpload());
 app.use(express.json());
 app.use(cors())
-app.use(cors({
-    origin: 'https://inventorywebsitee.firebaseapp.com'
-  }));
 app.use(express.urlencoded({ extended: true }));
 app.use('/api', routes);
 
